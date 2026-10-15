@@ -1,0 +1,444 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case Study 2 - Long Fat Networks</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f1f5f9;
+    color: #172033;
+}
+header {
+    background: #173b78;
+    color: white;
+    padding: 25px 16px;
+    text-align: center;
+}
+header h1 { margin: 0 0 10px; font-size: 26px; }
+header p { margin: 0; line-height: 1.6; }
+main { max-width: 1200px; margin: 24px auto; padding: 0 15px; }
+.cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.card, .panel {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px #0000000d;
+}
+.card { text-align: center; }
+.card span { color: #64748b; font-size: 13px; }
+.card strong {
+    display: block;
+    margin-top: 10px;
+    color: #2563eb;
+    font-size: 22px;
+}
+.actions { text-align: center; margin-bottom: 20px; }
+button {
+    background: #2563eb;
+    border: 0;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+button:hover { background: #1d4ed8; }
+#status { margin: 12px; font-size: 14px; }
+.charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+.panel h3 { font-size: 15px; margin: 0 0 12px; }
+canvas { width: 100%; height: 240px; display: block; }
+.legend { text-align: center; font-size: 12px; margin-top: 8px; }
+.legend span { margin-right: 15px; }
+.blue { color: #2563eb; }
+.orange { color: #f97316; }
+.green { color: #16a34a; }
+.summary { margin-top: 20px; line-height: 1.8; }
+.summary h2 { margin-top: 0; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+th, td { border: 1px solid #dbe3ed; padding: 10px; text-align: left; }
+th { background: #eff6ff; }
+.note { font-size: 13px; color: #64748b; }
+@media (max-width: 850px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .charts { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header>
+    <h1>CASE STUDY 2 - LONG FAT NETWORKS</h1>
+    <p>
+        So sánh TCP NewReno và UDP-based Reliable<br>
+        Băng thông 1 Gbps | RTT 600 ms | Lỗi gói 0,1% |
+        Dữ liệu mục tiêu 50 GB
+    </p>
+</header>
+
+<main>
+    <div class="cards">
+        <div class="card">
+            <span>Băng thông đường truyền</span>
+            <strong>1000 Mbps</strong>
+        </div>
+        <div class="card">
+            <span>RTT lý thuyết</span>
+            <strong>600 ms</strong>
+        </div>
+        <div class="card">
+            <span>TCP trung bình</span>
+            <strong id="tcpAvg">--</strong>
+        </div>
+        <div class="card">
+            <span>UDP-based trung bình</span>
+            <strong id="udpAvg">--</strong>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button onclick="loadData()">Cập nhật dữ liệu NS-3</button>
+        <div id="status">Đang tải dữ liệu...</div>
+    </div>
+
+    <div class="charts">
+        <div class="panel">
+            <h3>1. Throughput - TCP và UDP-based (Mbps)</h3>
+            <canvas id="chart1"></canvas>
+            <div class="legend">
+                <span class="blue">■ TCP</span>
+                <span class="orange">■ UDP-based</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>2. Bandwidth Utilization (%)</h3>
+            <canvas id="chart2"></canvas>
+            <div class="legend">
+                <span class="blue">■ TCP</span>
+                <span class="orange">■ UDP-based</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>3. TCP Latency một chiều (ms)</h3>
+            <canvas id="chart3"></canvas>
+            <div class="legend">
+                <span class="blue">■ TCP</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>4. Số gói nhận được (tích lũy)</h3>
+            <canvas id="chart4"></canvas>
+            <div class="legend">
+                <span class="blue">■ TCP</span>
+                <span class="orange">■ UDP-based</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>5. UDP-based Retransmissions (tích lũy)</h3>
+            <canvas id="chart5"></canvas>
+            <div class="legend">
+                <span class="orange">■ UDP-based</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>6. TCP FlowMonitor Lost Packets (tích lũy)</h3>
+            <canvas id="chart6"></canvas>
+            <div class="legend">
+                <span class="blue">■ TCP</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel summary">
+        <h2>Thống kê và nhận xét kết quả</h2>
+        <table>
+            <tr>
+                <th>Chỉ số</th>
+                <th>TCP NewReno</th>
+                <th>UDP-based Reliable</th>
+            </tr>
+            <tr>
+                <td>Thông lượng trung bình</td>
+                <td id="sTcp">--</td>
+                <td id="sUdp">--</td>
+            </tr>
+            <tr>
+                <td>Mức sử dụng băng thông</td>
+                <td id="uTcp">--</td>
+                <td id="uUdp">--</td>
+            </tr>
+            <tr>
+                <td>Dữ liệu đã nhận</td>
+                <td id="bTcp">--</td>
+                <td id="bUdp">--</td>
+            </tr>
+            <tr>
+                <td>Ước tính truyền 50 GB</td>
+                <td id="tTcp">--</td>
+                <td id="tUdp">--</td>
+            </tr>
+        </table>
+
+        <p>
+            <b>TCP NewReno:</b> Có cơ chế kiểm soát tắc nghẽn.
+            Khi mất gói do nhiễu, TCP có thể giảm cửa sổ truyền
+            và làm giảm thông lượng, nhất là khi RTT lớn.
+        </p>
+        <p>
+            <b>UDP-based Reliable:</b> Sử dụng ACK và timeout
+            để truyền lại gói bị mất ở tầng ứng dụng.
+            Đây chỉ là mô hình minh họa, chưa có cơ chế
+            kiểm soát tắc nghẽn và tối ưu hóa như UDT/Aspera.
+        </p>
+        <p class="note">
+            Chú ý: Hai phương án được chạy trên hai liên kết độc lập
+            có cùng cấu hình. Thời gian truyền 50 GB là ước tính
+            dựa trên thông lượng đo được trong mô phỏng 60 giây.
+            Số gói lost của FlowMonitor không đồng nghĩa trực tiếp
+            với tổng số gói bị lỗi trên đường truyền.
+        </p>
+    </div>
+</main>
+
+<script>
+const BLUE = "#2563eb";
+const ORANGE = "#f97316";
+let lastCharts = [];
+
+function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const keys = lines.shift().split(",");
+    return lines.map(line => {
+        const parts = line.split(",");
+        const row = {};
+        keys.forEach((key, i) => {
+            row[key] = key === "protocol"
+                ? parts[i]
+                : Number(parts[i]);
+        });
+        return row;
+    });
+}
+
+function average(rows, key) {
+    if (!rows.length) return 0;
+    return rows.reduce((s, r) => s + r[key], 0) / rows.length;
+}
+
+function formatMB(bytes) {
+    return (bytes / 1000000).toFixed(2) + " MB";
+}
+
+function estimateTime(mbps) {
+    if (mbps <= 0) return "Không xác định";
+    const seconds = 50 * 1000000000 * 8 / (mbps * 1000000);
+    return (seconds / 3600).toFixed(2) + " giờ";
+}
+
+function drawChart(id, datasets, yLabel) {
+    const canvas = document.getElementById(id);
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(240 * dpr);
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const w = rect.width;
+    const h = 240;
+    const left = 55, right = 15, top = 15, bottom = 35;
+    const pw = w - left - right;
+    const ph = h - top - bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const all = datasets.flatMap(d => d.points);
+    if (!all.length) return;
+
+    const xs = all.map(p => p.x);
+    const ys = all.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(1, ...ys) * 1.1;
+
+    const xScale = x =>
+        left + (x - minX) / (maxX - minX || 1) * pw;
+
+    const yScale = y =>
+        top + ph - y / maxY * ph;
+
+    ctx.font = "11px Arial";
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.fillStyle = "#64748b";
+
+    for (let i = 0; i <= 5; i++) {
+        const y = top + ph * i / 5;
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(w - right, y);
+        ctx.stroke();
+
+        const value = maxY * (5 - i) / 5;
+        ctx.fillText(value.toFixed(2), 5, y + 4);
+    }
+
+    for (let i = 0; i <= 5; i++) {
+        const x = left + pw * i / 5;
+        const value = minX + (maxX - minX) * i / 5;
+        ctx.fillText(value.toFixed(0), x - 8, h - 15);
+    }
+
+    datasets.forEach(dataset => {
+        ctx.strokeStyle = dataset.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        dataset.points.forEach((p, i) => {
+            const x = xScale(p.x);
+            const y = yScale(p.y);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+
+        ctx.stroke();
+    });
+
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("Thời gian (giây)", w / 2 - 45, h - 2);
+    ctx.save();
+    ctx.translate(12, h / 2 + 25);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(yLabel, 0, 0);
+    ctx.restore();
+}
+
+function points(rows, key) {
+    return rows.map(r => ({
+        x: r.time,
+        y: r[key]
+    }));
+}
+
+async function loadData() {
+    const status = document.getElementById("status");
+    status.textContent = "Đang đọc results/case2.csv...";
+
+    try {
+        const response = await fetch(
+            "../results/case2.csv?t=" + Date.now()
+        );
+
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+        }
+
+        const text = await response.text();
+        const data = parseCSV(text);
+
+        const tcp = data.filter(r => r.protocol === "TCP");
+        const udp = data.filter(
+            r => r.protocol === "UDP_RELIABLE"
+        );
+
+        if (!tcp.length || !udp.length) {
+            throw new Error(
+                "CSV chưa có đủ dữ liệu TCP và UDP_RELIABLE"
+            );
+        }
+
+        const tcpMbps = average(tcp, "throughput_mbps");
+        const udpMbps = average(udp, "throughput_mbps");
+
+        document.getElementById("tcpAvg").textContent =
+            tcpMbps.toFixed(3) + " Mbps";
+
+        document.getElementById("udpAvg").textContent =
+            udpMbps.toFixed(3) + " Mbps";
+
+        document.getElementById("sTcp").textContent =
+            tcpMbps.toFixed(3) + " Mbps";
+
+        document.getElementById("sUdp").textContent =
+            udpMbps.toFixed(3) + " Mbps";
+
+        document.getElementById("uTcp").textContent =
+            (tcpMbps / 10).toFixed(3) + "%";
+
+        document.getElementById("uUdp").textContent =
+            (udpMbps / 10).toFixed(3) + "%";
+
+        document.getElementById("bTcp").textContent =
+            formatMB(tcp[tcp.length - 1].received_bytes);
+
+        document.getElementById("bUdp").textContent =
+            formatMB(udp[udp.length - 1].received_bytes);
+
+        document.getElementById("tTcp").textContent =
+            estimateTime(tcpMbps);
+
+        document.getElementById("tUdp").textContent =
+            estimateTime(udpMbps);
+
+        const both = (key) => [
+            { color: BLUE, points: points(tcp, key) },
+            { color: ORANGE, points: points(udp, key) }
+        ];
+
+        const charts = [
+            ["chart1", both("throughput_mbps"), "Mbps"],
+            ["chart2", both("utilization_percent"), "%"],
+            ["chart3", [
+                { color: BLUE, points: points(tcp, "latency_ms") }
+            ], "ms"],
+            ["chart4", both("rx_packets"), "Packets"],
+            ["chart5", [
+                { color: ORANGE,
+                  points: points(udp, "retransmissions") }
+            ], "Packets"],
+            ["chart6", [
+                { color: BLUE,
+                  points: points(tcp, "lost_packets") }
+            ], "Packets"]
+        ];
+
+        lastCharts = charts;
+        charts.forEach(c => drawChart(c[0], c[1], c[2]));
+
+        status.textContent =
+            "Đã tải " + data.length + " dòng dữ liệu từ NS-3.";
+
+    } catch (error) {
+        status.textContent =
+            "Lỗi đọc dữ liệu: " + error.message +
+            ". Hãy chạy mô phỏng và mở trang qua localhost:8000.";
+    }
+}
+
+window.addEventListener("resize", () => {
+    lastCharts.forEach(c => drawChart(c[0], c[1], c[2]));
+});
+
+loadData();
+</script>
+</body>
+</html>

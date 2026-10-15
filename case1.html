@@ -1,0 +1,680 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Case Study 1 - TCP vs UDP</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 25px;
+            color: #1e293b;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        h1, h2, .subtitle {
+            text-align: center;
+        }
+
+        h1 {
+            color: #1d4ed8;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        .subtitle {
+            color: #64748b;
+        }
+
+        .toolbar {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .status {
+            text-align: center;
+            margin: 15px;
+            color: #475569;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0001;
+        }
+
+        .card h3 {
+            font-size: 16px;
+            margin-top: 0;
+        }
+
+        .chart-box {
+            height: 290px;
+        }
+
+        .note {
+            margin-top: 25px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            line-height: 1.7;
+        }
+
+        .note h3 {
+            margin-top: 0;
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .summary-table th,
+        .summary-table td {
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        .summary-table th {
+            background: #eff6ff;
+        }
+
+        @media (max-width: 800px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>CASE STUDY 1</h1>
+
+    <h2>
+        VIDEO STREAMING – SO SÁNH TCP VÀ UDP
+    </h2>
+
+    <p class="subtitle">
+        NS-3.34 | Video Conference vs Video On Demand |
+        Packet Error Rate: 2%
+    </p>
+
+    <div class="toolbar">
+        <button onclick="loadData()">
+            Cập nhật dữ liệu NS-3
+        </button>
+    </div>
+
+    <p id="status" class="status">
+        Đang tải dữ liệu...
+    </p>
+
+    <div class="grid">
+
+        <!-- 1. LATENCY -->
+        <div class="card">
+            <h3>
+                1. Latency (Độ trễ)
+            </h3>
+
+            <div class="chart-box">
+                <canvas id="latencyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 2. JITTER -->
+        <div class="card">
+            <h3>
+                2. Jitter (Độ biến thiên độ trễ)
+            </h3>
+
+            <div class="chart-box">
+                <canvas id="jitterChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 3. THROUGHPUT -->
+        <div class="card">
+            <h3>
+                3. Throughput (Thông lượng)
+            </h3>
+
+            <div class="chart-box">
+                <canvas id="throughputChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 4. UDP PACKET LOSS -->
+        <div class="card">
+            <h3>
+                4. UDP Packet Loss (Tỷ lệ mất gói UDP)
+            </h3>
+
+            <div class="chart-box">
+                <canvas id="udpLossChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 5. TCP RETRANSMISSIONS -->
+        <div class="card">
+            <h3>
+                5. TCP Retransmissions
+                (Số lần truyền lại TCP)
+            </h3>
+
+            <div class="chart-box">
+                <canvas id="tcpRetransChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- THỐNG KÊ -->
+    <div class="note">
+
+        <h3>Thống kê kết quả mô phỏng</h3>
+
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>Chỉ số</th>
+                    <th>TCP</th>
+                    <th>UDP</th>
+                </tr>
+            </thead>
+
+            <tbody id="summaryBody">
+                <tr>
+                    <td colspan="3">
+                        Đang tải dữ liệu...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>
+            <small>
+                Các giá trị trung bình được tính từ
+                những mẫu thống kê NS-3 trong file CSV.
+                TCP Retransmissions là số lần truyền lại
+                ước lượng và UDP Packet Loss là tỷ lệ
+                chưa nhận được tại thời điểm lấy mẫu.
+            </small>
+        </p>
+
+    </div>
+
+    <!-- NHẬN XÉT -->
+    <div class="note">
+
+        <h3>Nhận xét và đánh giá</h3>
+
+        <p>
+            <b>Video Conference – Chọn UDP:</b>
+            Họp trực tuyến yêu cầu độ trễ thấp,
+            dữ liệu âm thanh và hình ảnh được truyền
+            liên tục. UDP không bắt buộc chờ truyền
+            lại các gói đã mất ở tầng Transport,
+            giúp hạn chế việc đứng hình do chờ dữ liệu cũ.
+        </p>
+
+        <p>
+            <b>Video On Demand – Chọn TCP:</b>
+            Dịch vụ xem phim theo yêu cầu có bộ đệm
+            để tải dữ liệu trước khi phát. TCP đảm bảo
+            truyền dữ liệu tin cậy và đúng thứ tự,
+            phù hợp với yêu cầu nhận đầy đủ dữ liệu.
+        </p>
+
+        <p>
+            <b>Khi xảy ra Packet Loss 2%:</b>
+            UDP có thể mất một phần dữ liệu,
+            trong khi TCP phải xử lý mất gói
+            bằng cơ chế truyền lại và kiểm soát tắc nghẽn.
+        </p>
+
+        <p>
+            <b>Kết luận:</b>
+            UDP phù hợp với Video Conference
+            vì ưu tiên thời gian thực.
+            TCP phù hợp với Video On Demand
+            vì ưu tiên độ tin cậy.
+        </p>
+
+        <p>
+            <b>Lưu ý:</b>
+            Đây là mô phỏng truyền dữ liệu TCP/UDP,
+            chưa trực tiếp mô phỏng hình ảnh,
+            âm thanh hoặc chất lượng video thực tế.
+            Hai luồng có tải gửi khác nhau nên
+            không thể kết luận UDP luôn nhanh hơn TCP.
+        </p>
+
+    </div>
+
+</div>
+
+<script>
+
+const charts = {};
+
+const TCP_COLOR = "#2563eb";
+const UDP_COLOR = "#f97316";
+
+// Tạo biểu đồ đường
+function createChart(id, yTitle, datasets) {
+
+    if (charts[id]) {
+        charts[id].destroy();
+    }
+
+    charts[id] = new Chart(
+        document.getElementById(id),
+        {
+            type: "line",
+
+            data: {
+                datasets: datasets.map(item => ({
+                    label: item.label,
+                    data: item.data,
+                    borderColor: item.color,
+                    backgroundColor: item.color,
+                    tension: 0.2,
+                    pointRadius: 2,
+                    borderWidth: 2
+                }))
+            },
+
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                parsing: false,
+
+                interaction: {
+                    mode: "nearest",
+                    intersect: false
+                },
+
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: "top"
+                    }
+                },
+
+                scales: {
+                    x: {
+                        type: "linear",
+
+                        title: {
+                            display: true,
+                            text: "Time (Thời gian - giây)"
+                        }
+                    },
+
+                    y: {
+                        beginAtZero: true,
+
+                        title: {
+                            display: true,
+                            text: yTitle
+                        }
+                    }
+                }
+            }
+        }
+    );
+}
+
+// Chuyển dữ liệu CSV thành điểm x, y
+function points(rows, column) {
+
+    return rows.map(row => ({
+        x: Number(row.time),
+        y: Number(row[column])
+    }))
+    .filter(point =>
+        Number.isFinite(point.x) &&
+        Number.isFinite(point.y)
+    );
+}
+
+// Trung bình của một cột
+function average(rows, column) {
+
+    const values = rows
+        .map(row => Number(row[column]))
+        .filter(value => Number.isFinite(value));
+
+    if (values.length === 0) {
+        return 0;
+    }
+
+    const total = values.reduce(
+        (sum, value) => sum + value, 0
+    );
+
+    return total / values.length;
+}
+
+// Lấy giá trị cuối
+function lastValue(rows, column) {
+
+    if (rows.length === 0) {
+        return 0;
+    }
+
+    const value = Number(
+        rows[rows.length - 1][column]
+    );
+
+    return Number.isFinite(value) ? value : 0;
+}
+
+// Hiển thị bảng thống kê
+function updateSummary(tcp, udp) {
+
+    const tcpLatency = average(
+        tcp, "latency_ms"
+    );
+
+    const udpLatency = average(
+        udp, "latency_ms"
+    );
+
+    const tcpJitter = average(
+        tcp, "jitter_ms"
+    );
+
+    const udpJitter = average(
+        udp, "jitter_ms"
+    );
+
+    const tcpThroughput = average(
+        tcp, "throughput_mbps"
+    );
+
+    const udpThroughput = average(
+        udp, "throughput_mbps"
+    );
+
+    const udpLoss = lastValue(
+        udp, "udp_loss_percent"
+    );
+
+    const tcpRetrans = lastValue(
+        tcp, "tcp_retransmissions"
+    );
+
+    document.getElementById(
+        "summaryBody"
+    ).innerHTML = `
+
+        <tr>
+            <td>Latency (Độ trễ trung bình)</td>
+            <td>${tcpLatency.toFixed(3)} ms</td>
+            <td>${udpLatency.toFixed(3)} ms</td>
+        </tr>
+
+        <tr>
+            <td>Jitter (Độ biến thiên độ trễ)</td>
+            <td>${tcpJitter.toFixed(3)} ms</td>
+            <td>${udpJitter.toFixed(3)} ms</td>
+        </tr>
+
+        <tr>
+            <td>Throughput (Thông lượng trung bình)</td>
+            <td>${tcpThroughput.toFixed(3)} Mbps</td>
+            <td>${udpThroughput.toFixed(3)} Mbps</td>
+        </tr>
+
+        <tr>
+            <td>UDP Packet Loss (Tỷ lệ chưa nhận cuối kỳ)</td>
+            <td>—</td>
+            <td>${udpLoss.toFixed(2)}%</td>
+        </tr>
+
+        <tr>
+            <td>TCP Retransmissions (Ước lượng cuối kỳ)</td>
+            <td>${tcpRetrans.toFixed(0)} lần</td>
+            <td>—</td>
+        </tr>
+    `;
+}
+
+// Đọc dữ liệu từ NS-3
+async function loadData() {
+
+    const status = document.getElementById(
+        "status"
+    );
+
+    try {
+
+        status.textContent =
+            "Đang đọc dữ liệu CSV từ NS-3...";
+
+        const response = await fetch(
+            "../results/case1.csv?t=" + Date.now(),
+            { cache: "no-store" }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "Không đọc được results/case1.csv"
+            );
+        }
+
+        const csv = await response.text();
+
+        const lines = csv.trim().split(/\r?\n/);
+
+        const headers = lines[0]
+            .split(",")
+            .map(header => header.trim());
+
+        const requiredColumns = [
+            "time",
+            "protocol",
+            "latency_ms",
+            "jitter_ms",
+            "throughput_mbps",
+            "udp_loss_percent",
+            "tcp_retransmissions"
+        ];
+
+        const missing = requiredColumns.filter(
+            column => !headers.includes(column)
+        );
+
+        if (missing.length > 0) {
+            throw new Error(
+                "CSV thiếu cột: " +
+                missing.join(", ") +
+                ". Hãy chạy lại case1.cc."
+            );
+        }
+
+        const records = lines.slice(1)
+            .filter(line => line.trim())
+            .map(line => {
+
+                const values = line.split(",");
+
+                const record = {};
+
+                headers.forEach((header, index) => {
+                    record[header] =
+                        (values[index] || "").trim();
+                });
+
+                return record;
+            });
+
+        const tcp = records.filter(
+            row => row.protocol === "TCP"
+        );
+
+        const udp = records.filter(
+            row => row.protocol === "UDP"
+        );
+
+        if (tcp.length === 0 || udp.length === 0) {
+            throw new Error(
+                "Không tìm thấy dữ liệu TCP hoặc UDP."
+            );
+        }
+
+        // 1. Latency
+        createChart(
+            "latencyChart",
+            "Latency (Độ trễ - ms)",
+            [
+                {
+                    label: "TCP",
+                    data: points(tcp, "latency_ms"),
+                    color: TCP_COLOR
+                },
+                {
+                    label: "UDP",
+                    data: points(udp, "latency_ms"),
+                    color: UDP_COLOR
+                }
+            ]
+        );
+
+        // 2. Jitter
+        createChart(
+            "jitterChart",
+            "Jitter (Biến thiên độ trễ - ms)",
+            [
+                {
+                    label: "TCP",
+                    data: points(tcp, "jitter_ms"),
+                    color: TCP_COLOR
+                },
+                {
+                    label: "UDP",
+                    data: points(udp, "jitter_ms"),
+                    color: UDP_COLOR
+                }
+            ]
+        );
+
+        // 3. Throughput
+        createChart(
+            "throughputChart",
+            "Throughput (Thông lượng - Mbps)",
+            [
+                {
+                    label: "TCP",
+                    data: points(tcp, "throughput_mbps"),
+                    color: TCP_COLOR
+                },
+                {
+                    label: "UDP",
+                    data: points(udp, "throughput_mbps"),
+                    color: UDP_COLOR
+                }
+            ]
+        );
+
+        // 4. UDP Packet Loss
+        createChart(
+            "udpLossChart",
+            "Packet Loss (Tỷ lệ chưa nhận - %)",
+            [
+                {
+                    label: "UDP",
+                    data: points(
+                        udp, "udp_loss_percent"
+                    ),
+                    color: UDP_COLOR
+                }
+            ]
+        );
+
+        // 5. TCP Retransmissions
+        createChart(
+            "tcpRetransChart",
+            "Retransmissions (Số lần ước lượng)",
+            [
+                {
+                    label: "TCP",
+                    data: points(
+                        tcp, "tcp_retransmissions"
+                    ),
+                    color: TCP_COLOR
+                }
+            ]
+        );
+
+        // Cập nhật bảng thống kê
+        updateSummary(tcp, udp);
+
+        status.textContent =
+            "Đã tải " + records.length +
+            " dòng dữ liệu từ NS-3 (" +
+            tcp.length + " TCP, " +
+            udp.length + " UDP).";
+
+    } catch (error) {
+
+        status.textContent =
+            "Lỗi: " + error.message;
+
+        console.error(error);
+    }
+}
+
+// Tự động tải khi mở trang
+loadData();
+
+</script>
+
+</body>
+</html>

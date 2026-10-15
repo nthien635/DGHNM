@@ -1,0 +1,684 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Case Study 3 - HTTP/2 vs QUIC-like</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 24px;
+    background: #f1f5f9;
+    color: #172033;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    max-width: 1200px;
+    margin: auto;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+}
+
+h2 {
+    font-size: 18px;
+    color: #334155;
+}
+
+p {
+    line-height: 1.65;
+}
+
+.subtitle {
+    color: #64748b;
+}
+
+.toolbar {
+    text-align: center;
+    margin: 18px;
+}
+
+button {
+    border: 0;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#status {
+    text-align: center;
+    color: #475569;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.card, .note {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px #0001;
+}
+
+.card h3 {
+    font-size: 16px;
+    margin: 0 0 12px;
+}
+
+.chart {
+    height: 300px;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.stat {
+    background: white;
+    text-align: center;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.stat b {
+    display: block;
+    font-size: 23px;
+    color: #2563eb;
+    margin-top: 8px;
+}
+
+.note {
+    margin-top: 18px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+td, th {
+    border: 1px solid #e2e8f0;
+    padding: 12px;
+    text-align: left;
+}
+
+th {
+    background: #eff6ff;
+}
+
+.muted {
+    color: #64748b;
+    font-size: 13px;
+}
+
+@media (max-width: 800px) {
+    .grid, .stats {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+    <h1>CASE STUDY 3</h1>
+    <h2>HTTP/2 + TCP vs QUIC-like Reliable UDP</h2>
+
+    <p class="subtitle">
+        NS-3.34 | Bandwidth: 10 Mbps |
+        RTT: 100 ms | Packet Error: 2% |
+        6 Streams
+    </p>
+
+    <p class="muted">
+        Mô hình minh họa cơ chế truyền tải.
+        Không phải triển khai HTTP/3/QUIC thực tế.
+    </p>
+</header>
+
+<div class="toolbar">
+    <button onclick="loadData()">
+        Cập nhật dữ liệu NS-3
+    </button>
+</div>
+
+<p id="status">
+    Đang tải dữ liệu mô phỏng...
+</p>
+
+<div class="stats">
+    <div class="stat">
+        TCP Page Completion (Hoàn tất trang)
+        <b id="tcpPage">—</b>
+    </div>
+
+    <div class="stat">
+        UDP-like Page Completion (Hoàn tất trang)
+        <b id="udpPage">—</b>
+    </div>
+
+    <div class="stat">
+        Total Payload (Tổng dữ liệu)
+        <b id="total">—</b>
+    </div>
+</div>
+
+<div class="grid">
+
+    <div class="card">
+        <h3>1. Throughput (Thông lượng)</h3>
+        <div class="chart">
+            <canvas id="throughput"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>2. Received Data (Dữ liệu nhận tích lũy)</h3>
+        <div class="chart">
+            <canvas id="bytes"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>3. Stream Completion Time (Thời gian hoàn thành từng luồng)</h3>
+        <div class="chart">
+            <canvas id="streams"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>4. Page Completion Time (Thời gian hoàn tất trang)</h3>
+        <div class="chart">
+            <canvas id="page"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>5. UDP Retransmission Attempts (Số lần thử truyền lại)</h3>
+        <div class="chart">
+            <canvas id="retrans"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>6. UDP Retry Ratio (Tỷ lệ thử truyền lại)</h3>
+        <div class="chart">
+            <canvas id="loss"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<div class="note">
+
+    <h3>Thống kê và đánh giá kết quả</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Metric (Chỉ số)</th>
+                <th>TCP Ordered Stream</th>
+                <th>UDP Reliable Streams</th>
+            </tr>
+        </thead>
+
+        <tbody id="summary"></tbody>
+    </table>
+
+    <p>
+        <b>Head-of-Line Blocking:</b>
+        TCP truyền dữ liệu theo thứ tự.
+        Khi mất đoạn dữ liệu, các byte đến sau
+        có thể phải chờ truyền lại.
+        Mô hình UDP sử dụng 6 luồng độc lập
+        với ACK và truyền lại riêng.
+    </p>
+
+    <p>
+        <b>Packet Loss:</b>
+        Mạng được cấu hình xác suất lỗi gói 2%.
+        Biểu đồ UDP Retry Ratio là tỷ lệ
+        lần thử truyền lại trên tổng số lần gửi,
+        không phải tỷ lệ mất gói vật lý.
+    </p>
+
+    <p>
+        <b>Latency:</b>
+        Độ trễ cấu hình một chiều là 50 ms,
+        tương ứng RTT lý thuyết khoảng 100 ms.
+        Mô hình không đo riêng độ trễ ứng dụng
+        của từng gói.
+    </p>
+
+    <p>
+        <b>Giới hạn mô phỏng:</b>
+        Chưa triển khai HTTP framing, TLS 1.3,
+        QUIC congestion control hoặc 0-RTT.
+        Kết quả dùng để minh họa hành vi
+        truyền tải, không phải benchmark
+        HTTP/2 và HTTP/3 thực tế.
+    </p>
+
+</div>
+</div>
+
+<script>
+const charts = {};
+
+const BLUE = "#2563eb";
+const ORANGE = "#f97316";
+
+function parseCSV(csv) {
+    const lines = csv.trim().split(/\r?\n/);
+
+    if (lines.length < 2) {
+        throw new Error("CSV trống");
+    }
+
+    const headers = lines[0]
+        .split(",")
+        .map(x => x.trim());
+
+    return lines.slice(1)
+        .filter(Boolean)
+        .map(line => {
+            const values = line.split(",");
+            const record = {};
+
+            values.forEach((v, i) => {
+                record[headers[i]] = v.trim();
+            });
+
+            return record;
+        });
+}
+
+function linePoints(rows, column) {
+    return rows.map(r => ({
+        x: Number(r.time),
+        y: Number(r[column])
+    })).filter(p =>
+        Number.isFinite(p.x) &&
+        Number.isFinite(p.y)
+    );
+}
+
+function series(name, data, color) {
+    return { name, data, color };
+}
+
+function plot(
+    id,
+    datasets,
+    xLabel,
+    yLabel,
+    type = "line",
+    labels = null
+) {
+    if (charts[id]) {
+        charts[id].destroy();
+    }
+
+    charts[id] = new Chart(
+        document.getElementById(id),
+        {
+            type: type,
+
+            data: {
+                labels: labels,
+
+                datasets: datasets.map(d => ({
+                    label: d.name,
+                    data: d.data,
+                    borderColor: d.color,
+                    backgroundColor: d.color,
+                    tension: 0.15,
+                    pointRadius:
+                        type === "line" ? 1.5 : 0,
+                    borderWidth: 2
+                }))
+            },
+
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+
+                parsing:
+                    type === "line" ? false : true,
+
+                plugins: {
+                    legend: {
+                        position: "top"
+                    }
+                },
+
+                scales: {
+                    x: type === "line"
+                        ? {
+                            type: "linear",
+                            title: {
+                                display: true,
+                                text: xLabel
+                            }
+                        }
+                        : {
+                            title: {
+                                display: true,
+                                text: xLabel
+                            }
+                        },
+
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: yLabel
+                        }
+                    }
+                }
+            }
+        }
+    );
+}
+
+function num(n, digits = 2) {
+    return Number.isFinite(n)
+        ? n.toFixed(digits)
+        : "N/A";
+}
+
+async function loadData() {
+    const status = document.getElementById("status");
+
+    try {
+        status.textContent =
+            "Đang tải dữ liệu từ NS-3...";
+
+        if (typeof Chart === "undefined") {
+            throw new Error(
+                "Không tải được Chart.js. Kiểm tra Internet."
+            );
+        }
+
+        const urls = [
+            "../results/case3.csv",
+            "../results/case3_streams.csv"
+        ];
+
+        const texts = await Promise.all(
+            urls.map(url =>
+                fetch(url + "?t=" + Date.now())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(
+                                "Không tìm thấy " + url
+                            );
+                        }
+
+                        return response.text();
+                    })
+            )
+        );
+
+        const rows = parseCSV(texts[0]);
+        const streamRows = parseCSV(texts[1]);
+
+        const tcp = rows.filter(
+            r => r.protocol === "TCP"
+        );
+
+        const udp = rows.filter(
+            r => r.protocol === "UDP-reliable"
+        );
+
+        if (
+            tcp.length === 0 ||
+            udp.length === 0 ||
+            streamRows.length !== 6
+        ) {
+            throw new Error(
+                "Dữ liệu CSV không đúng cấu trúc"
+            );
+        }
+
+        // 1. Throughput
+        plot(
+            "throughput",
+            [
+                series(
+                    "TCP",
+                    linePoints(
+                        tcp, "throughput_mbps"
+                    ),
+                    BLUE
+                ),
+
+                series(
+                    "UDP Reliable",
+                    linePoints(
+                        udp, "throughput_mbps"
+                    ),
+                    ORANGE
+                )
+            ],
+            "Time (Thời gian - giây)",
+            "Throughput (Mbps)"
+        );
+
+        // 2. Received data
+        plot(
+            "bytes",
+            [
+                series(
+                    "TCP",
+                    linePoints(
+                        tcp, "received_bytes"
+                    ).map(p => ({
+                        x: p.x,
+                        y: p.y / 1000000
+                    })),
+                    BLUE
+                ),
+
+                series(
+                    "UDP Reliable",
+                    linePoints(
+                        udp, "received_bytes"
+                    ).map(p => ({
+                        x: p.x,
+                        y: p.y / 1000000
+                    })),
+                    ORANGE
+                )
+            ],
+            "Time (Thời gian - giây)",
+            "Received Data (MB)"
+        );
+
+        // 3. Completion time per stream
+        const labels = streamRows.map(
+            r => "Stream " + r.stream
+        );
+
+        const tcpTimes = streamRows.map(
+            r => Number(r.tcp_completion_s) || 0
+        );
+
+        const udpTimes = streamRows.map(
+            r => Number(r.udp_completion_s) || 0
+        );
+
+        plot(
+            "streams",
+            [
+                series("TCP", tcpTimes, BLUE),
+                series(
+                    "UDP Reliable",
+                    udpTimes,
+                    ORANGE
+                )
+            ],
+            "Stream (Luồng)",
+            "Completion Time (Giây)",
+            "bar",
+            labels
+        );
+
+        // 4. Page completion time
+        const tcpPage = Math.max(...tcpTimes);
+        const udpPage = Math.max(...udpTimes);
+
+        plot(
+            "page",
+            [
+                series(
+                    "Page Completion",
+                    [tcpPage, udpPage],
+                    BLUE
+                )
+            ],
+            "Protocol (Giao thức)",
+            "Completion Time (Giây)",
+            "bar",
+            ["TCP", "UDP Reliable"]
+        );
+
+        // 5. Retransmissions
+        plot(
+            "retrans",
+            [
+                series(
+                    "UDP Retransmissions",
+                    linePoints(
+                        udp, "retransmissions"
+                    ),
+                    ORANGE
+                )
+            ],
+            "Time (Thời gian - giây)",
+            "Retransmission Attempts (Lần)"
+        );
+
+        // 6. Retry ratio
+        plot(
+            "loss",
+            [
+                series(
+                    "UDP Retry Ratio",
+                    linePoints(
+                        udp, "packet_loss_percent"
+                    ),
+                    ORANGE
+                )
+            ],
+            "Time (Thời gian - giây)",
+            "Retry Ratio (%)"
+        );
+
+        const lastTcp = tcp[tcp.length - 1];
+        const lastUdp = udp[udp.length - 1];
+
+        document.getElementById(
+            "tcpPage"
+        ).textContent = tcpPage
+            ? num(tcpPage) + " s"
+            : "Chưa xong";
+
+        document.getElementById(
+            "udpPage"
+        ).textContent = udpPage
+            ? num(udpPage) + " s"
+            : "Chưa xong";
+
+        document.getElementById(
+            "total"
+        ).textContent = "0.922 MB";
+
+        document.getElementById(
+            "summary"
+        ).innerHTML = `
+            <tr>
+                <td>Received Payload (Dữ liệu nhận)</td>
+                <td>${num(
+                    Number(lastTcp.received_bytes) / 1e6,
+                    3
+                )} MB</td>
+                <td>${num(
+                    Number(lastUdp.received_bytes) / 1e6,
+                    3
+                )} MB</td>
+            </tr>
+
+            <tr>
+                <td>Page Completion (Hoàn tất trang)</td>
+                <td>${
+                    tcpPage
+                    ? num(tcpPage) + " s"
+                    : "Chưa xong"
+                }</td>
+                <td>${
+                    udpPage
+                    ? num(udpPage) + " s"
+                    : "Chưa xong"
+                }</td>
+            </tr>
+
+            <tr>
+                <td>Retransmission Attempts (Truyền lại)</td>
+                <td>Không đo</td>
+                <td>${lastUdp.retransmissions}</td>
+            </tr>
+
+            <tr>
+                <td>Configured RTT (RTT cấu hình)</td>
+                <td>100 ms</td>
+                <td>100 ms</td>
+            </tr>
+        `;
+
+        status.textContent =
+            "Đã tải " + rows.length +
+            " dòng dữ liệu và " +
+            streamRows.length +
+            " luồng từ NS-3.";
+
+    } catch (error) {
+        status.textContent =
+            "Lỗi: " + error.message;
+
+        console.error(error);
+    }
+}
+
+loadData();
+</script>
+</body>
+</html>
